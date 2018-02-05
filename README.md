@@ -6,7 +6,12 @@
 [![Dependency Status](https://img.shields.io/versioneye/d/nodejs/homebridge-platform-linktap.svg)](https://www.versioneye.com/nodejs/homebridge-platform-linktap/)
 [![Slack Channel](https://img.shields.io/badge/slack-platform--linktap-brightgreen.svg)](https://homebridgeteam.slack.com/messages/C93QDKXSP/)
 
+
 LinkTap Platform Plugin for the [Homebridge](https://github.com/nfarina/homebridge) project.
+
+# Note - seriously WIP
+
+This package is currently being developed and is a WORK IN PROGRESS. Its currently in the ALPHA stage. 
 
 ## LinkTap
 
@@ -48,6 +53,12 @@ Configuration sample:
 ]
 ```
 
+# Known Issues
+
+These are currently the known issues
+- API calls are failing
+- Cannot read the username, apiKey and gatewayId keys from the config. 
+- the hierarchy of LinkTapPlatform > LinkTap(s) may be broken (IDK yet). 
 
 # Credits
 
