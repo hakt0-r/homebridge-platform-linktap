@@ -3,7 +3,7 @@
 [![npm package](https://nodei.co/npm/homebridge-platform-linktap.png?downloads=true&downloadRank=true&stars=true)](https://nodei.co/npm/homebridge-platform-linktap/)
 
 [![NPM Version](https://img.shields.io/npm/v/homebridge-platform-linktap.svg)](https://www.npmjs.com/package/homebridge-platform-linktap)
-[![Dependency Status](https://img.shields.io/versioneye/d/nodejs/homebridge-platform-linktap.svg)](https://www.versioneye.com/nodejs/homebridge-platform-linktap/)
+[![Dependency Status](https://www.versioneye.com/user/projects/5a786fed0fb24f1f133fae07/badge.svg?style=flat-square)](https://www.versioneye.com/user/projects/5a786fed0fb24f1f133fae07)
 [![Slack Channel](https://img.shields.io/badge/slack-platform--linktap-brightgreen.svg)](https://homebridgeteam.slack.com/messages/C93QDKXSP/)
 
 
