@@ -2,9 +2,9 @@ const request = require('request');
 const _baseURL = 'https://www.link-tap.com/api/';
 var inherits = require('util').inherits;
 var Service, Characteristic, Accessory, UUIDGen;
-//var debug = require('debug')('linktap');
+var debug = require('debug')('linktap');
 
-var username,apiKey,gatewayId;
+var username, apiKey, gatewayId;
 
 module.exports = function(homebridge) {
   Service = homebridge.hap.Service;
@@ -107,30 +107,40 @@ LinkTapAccessory.prototype.identify = function(callback) {
 
 LinkTapAccessory.prototype.turnOnTheTap = function(on, callback) {
   this.log("Setting tap state to " + on);
-  this.log("Data: %s, %s, %s",username,apiKey,gatewayId);
+  this.log("Data: %s, %s, %s", username, apiKey, gatewayId, this.taplinkerId, this.duration);
 
+  var data = {
+    username: username,
+    apiKey: apiKey,
+    gatewayId: gatewayId,
+    taplinkerId: this.taplinkerId,
+    action: 'true',
+    duration: this.duration
+  };
+
+
+  var body = JSON.stringify(data);
+  debug("body",body);
   this._resetTimer();
   if (on) {
-        	request({
-        		url: _baseURL + "activateInstantMode",
-        		body: {
-        			username: username,
-    				apiKey: apiKey,
-    				gatewayId: gatewayId,
-    				taplinkerId: this.taplinkerId,
-    				action: 'true',
-    				duration: this.duration
-        		},
-        		method: 'POST',
-        		headers: {'Content-type': 'application/json'}
-        	},
-        	function (error, response) {
-        		if (error) {
-            		this.log('STATUS: ' + response.statusCode);
-            		this.log(error.message);
-            		callback(error);
-          		}
-        	});
+
+    request({
+        url: _baseURL + "activateInstantMode",
+        body: body,
+        method: 'POST',
+        headers: {
+          'Content-type': 'application/json'
+        }
+      },
+      function(error, response) {
+        if (error) {
+          debug(error);
+          debug('STATUS: ', response.statusCode);
+          callback(error);
+        }  else {
+          debug('STATUS: ', response.statusCode, response.body);
+        }
+      }.bind(this));
     this._startTimer();
   }
   callback();
