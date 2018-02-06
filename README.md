@@ -57,13 +57,26 @@ Configuration sample:
 
 These are currently the known issues
 - API calls are failing
-- Cannot read the username, apiKey and gatewayId keys from the config. 
-- the hierarchy of LinkTapPlatform > LinkTap(s) may be broken (IDK yet). 
+
+# Future updates
+
+These are some of the planned future updates to this project
+- Async Timer - Cause when the API call fails, we can cancel the timer and triger the switch-off process.
+- Implicit OFF - currently the switch-OFF is a timer based switch-off without the actual API call to implicitly switch off the tap. I'd like when the user switches off via the HomeKit the system determines if there is time left on the watering duration and if so issue the API call to switch off the LinkTap.
+
+## Down the road...
+
+These can be implemented as and when the LinkTap APIs are implemented. Some (if not all) are event driven.
+- Characteristic.Active 
+- Characteristic.BatteryLevel
+- Characteristic.InUse
+- Characteristic.StatusLowBattery
 
 # Credits
 
 Credit goes to
 - michaelfro for his work on [homebridge-delayed-switches](https://github.com/grover/homebridge-delayed-switches) that this is work is based on.
+- [NorthernMan54](https://github.com/NorthernMan54) for helping me out and getting me across the line. Cheers mate! 
 
 # License
 
