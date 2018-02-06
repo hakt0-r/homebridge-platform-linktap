@@ -29,6 +29,7 @@
     "node": ">=4.3.2"
   },
   "dependencies": {
-    "request": ">=2.5.0"
+    "request": ">=2.5.0",
+    "debug": "^2.2.0"
   }
 }
