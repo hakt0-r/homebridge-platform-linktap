@@ -30,6 +30,6 @@
   },
   "dependencies": {
     "request": ">=2.5.0",
-    "debug": "^2.2.0"
+    "debug": ">=3.1.0"
   }
 }
