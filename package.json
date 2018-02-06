@@ -1,6 +1,6 @@
 {
   "name": "homebridge-platform-linktap",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Homebridge plugin for LinkTap (https://www.link-tap.com) based on https://github.com/grover/homebridge-delayed-switches",
   "main": "index.js",
   "scripts": {
