@@ -2,7 +2,7 @@ const request = require('request');
 const _baseURL = 'https://www.link-tap.com/api/';
 var inherits = require('util').inherits;
 var Service, Characteristic, Accessory, UUIDGen;
-var debug = require('debug')('linktap');
+//var debug = require('debug')('linktap');
 
 var username,apiKey,gatewayId;
 
@@ -107,16 +107,16 @@ LinkTapAccessory.prototype.identify = function(callback) {
 
 LinkTapAccessory.prototype.turnOnTheTap = function(on, callback) {
   this.log("Setting tap state to " + on);
-	debug("Data",username,apiKey,gatewayId);
+  this.log("Data: %s, %s, %s",username,apiKey,gatewayId);
 
   this._resetTimer();
   if (on) {
-    /*    	request({
+        	request({
         		url: _baseURL + "activateInstantMode",
         		body: {
-        			username: this.username,
-    				apiKey: this.apiKey,
-    				gatewayId: this.gatewayId,
+        			username: username,
+    				apiKey: apiKey,
+    				gatewayId: gatewayId,
     				taplinkerId: this.taplinkerId,
     				action: 'true',
     				duration: this.duration
@@ -130,7 +130,7 @@ LinkTapAccessory.prototype.turnOnTheTap = function(on, callback) {
             		this.log(error.message);
             		callback(error);
           		}
-        	});*/
+        	});
     this._startTimer();
   }
   callback();
