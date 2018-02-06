@@ -4,7 +4,7 @@ var inherits = require('util').inherits;
 var Service, Characteristic, Accessory, UUIDGen;
 var debug = require('debug')('linktap');
 
-var username,apiKeygatewayId;
+var username,apiKey,gatewayId;
 
 module.exports = function(homebridge) {
   Service = homebridge.hap.Service;
