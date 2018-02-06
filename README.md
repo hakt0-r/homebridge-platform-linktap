@@ -55,8 +55,7 @@ Configuration sample:
 
 # Known Issues
 
-These are currently the known issues
-- API calls are failing
+These are currently no known issues.
 
 # Future updates
 
