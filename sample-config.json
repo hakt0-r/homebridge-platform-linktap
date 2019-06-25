@@ -11,7 +11,7 @@ Help...
 	            "location": "",			//Optional. friendly location name.
 	            "taplinkerId": "",			//Required. String type. Your LinkTap Taplinker's first 16-digits/letters ID, case insensitive, no dash symbol
 	            "duration": 1,			//Required. The watering duration (unit is minutes) 1..1439 minutes. Default 1 minute.
-		    "autoBack": true			//Optional. Defaults to true
+		    "autoBack": true			//Required. Defaults to true
 	    	}
 		]
 	}
