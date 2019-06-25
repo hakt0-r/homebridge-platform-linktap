@@ -51,6 +51,7 @@ function LinkTapAccessory(log, tap) {
   this.taplinkerId = tap.taplinkerId; //required xxxx-xxxx-xxxx-xxxx (no hyphens)
   this.duration = tap.duration; //required timer value in minutes 1..1439 minutes
   this._durationInSeconds = this.duration * 60;
+  this.autoBack = tap.autoBack || true; //required
 
   this.log("Found LinkTap: %s [%s]", this.name, this.taplinkerId);
 
@@ -115,7 +116,8 @@ LinkTapAccessory.prototype.turnOnTheTap = function(on, callback) {
     gatewayId: gatewayId,
     taplinkerId: this.taplinkerId,
     action: 'true',
-    duration: this.duration
+    duration: this.duration,
+    autoBack: this.autoBack
   };
 
 
