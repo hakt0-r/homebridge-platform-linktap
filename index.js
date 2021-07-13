@@ -115,7 +115,7 @@ LinkTapAccessory.prototype.turnOnTheTap = function(on, callback) {
     apiKey: apiKey,
     gatewayId: gatewayId,
     taplinkerId: this.taplinkerId,
-    action: 'true',
+    action: on,
     duration: this.duration,
     autoBack: this.autoBack
   };
