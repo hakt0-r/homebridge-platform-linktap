@@ -61,7 +61,7 @@ These are currently no known issues.
 
 These are some of the planned future updates to this project
 - Async Timer - Cause when the API call fails, we can cancel the timer and triger the switch-off process.
-- Implicit OFF - currently the switch-OFF is a timer based switch-off without the actual API call to implicitly switch off the tap. I'd like when the user switches off via the HomeKit the system determines if there is time left on the watering duration and if so issue the API call to switch off the LinkTap.
+~~- Implicit OFF - currently the switch-OFF is a timer based switch-off without the actual API call to implicitly switch off the tap. I'd like when the user switches off via the HomeKit the system determines if there is time left on the watering duration and if so issue the API call to switch off the LinkTap.~~
 
 ## Down the road...
 
