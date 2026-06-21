@@ -1,6 +1,5 @@
 const request = require('request');
 const _baseURL = 'https://www.link-tap.com/api/';
-var inherits = require('util').inherits;
 var Service, Characteristic, Accessory, UUIDGen;
 var debug = require('debug')('linktap');
 
@@ -12,7 +11,7 @@ module.exports = function(homebridge) {
   Accessory = homebridge.hap.Accessory;
   UUIDGen = homebridge.hap.uuid;
 
-  homebridge.registerPlatform("homebridge-platform-linktap", "LinkTapPlatform", LinkTapPlatform);
+  homebridge.registerPlatform("homebridge-platform-linktap-fix", "LinkTapPlatform", LinkTapPlatform);
 };
 
 function LinkTapPlatform(log, config, api) {
@@ -76,21 +75,21 @@ LinkTapAccessory.prototype.getTapService = function() {
   /**
    * DurationTimer Characteristic
    **/
-  Characteristic.DurationTimer = function() {
-    Characteristic.call(this, 'Duration Timer', 'CDC6551D-2D1B-4CC1-A5AE-0200844A7BC3');
-
-    this.setProps({
-      format: Characteristic.Formats.INT,
-      unit: Characteristic.Units.SECONDS,
-      perms: [Characteristic.Perms.READ, Characteristic.Perms.WRITE],
-      minValue: 60,
-      maxValue: 86340,
-    });
-
-    this.value = this.getDefaultValue();
-  };
-  inherits(Characteristic.DurationTimer, Characteristic);
-  Characteristic.DurationTimer.UUID = 'CDC6551D-2D1B-4CC1-A5AE-0200844A7BC3';
+  class DurationTimer extends Characteristic {
+    constructor() {
+      super('Duration Timer', 'CDC6551D-2D1B-4CC1-A5AE-0200844A7BC3');
+      this.setProps({
+        format: 'int',
+        unit: 's',
+        perms: ['pr', 'pw'],
+        minValue: 60,
+        maxValue: 86340,
+      });
+      this.value = this.getDefaultValue();
+    }
+  }
+  DurationTimer.UUID = 'CDC6551D-2D1B-4CC1-A5AE-0200844A7BC3';
+  Characteristic.DurationTimer = DurationTimer;
 
   tapService.addCharacteristic(Characteristic.DurationTimer);
   tapService.updateCharacteristic(Characteristic.DurationTimer, this._durationInSeconds);
