@@ -1,7 +1,7 @@
 {
   "name": "homebridge-platform-linktap",
-  "version": "0.0.9",
-  "description": "Homebridge plugin for LinkTap (https://www.link-tap.com) based on https://github.com/grover/homebridge-delayed-switches",
+  "version": "0.1.0",
+  "description": "Homebridge plugin for LinkTap (https://www.link-tap.com)",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -25,11 +25,10 @@
   },
   "homepage": "https://github.com/hakt0-r/homebridge-platform-linktap#readme",
   "engines": {
-    "homebridge": ">=0.4.0",
-    "node": ">=4.3.2"
+    "homebridge": ">=1.6.0",
+    "node": ">=18.0.0"
   },
   "dependencies": {
-    "request": ">=2.5.0",
-    "debug": ">=3.1.0"
+    "debug": "^4.3.4"
   }
 }
