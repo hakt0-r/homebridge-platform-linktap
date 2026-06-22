@@ -1,6 +1,6 @@
-const request = require('request');
+const https = require('https');
 const _baseURL = 'https://www.link-tap.com/api/';
-var inherits = require('util').inherits;
+const RATE_LIMIT_MS = 15000; // LinkTap API enforces a minimum 15s interval between calls
 var Service, Characteristic, Accessory, UUIDGen;
 var debug = require('debug')('linktap');
 
@@ -36,6 +36,13 @@ function LinkTapPlatform(log, config, api) {
 LinkTapPlatform.prototype.accessories = function(callback) {
   var that = this;
   that.accessories = [];
+
+  if (!that.config.taps || !Array.isArray(that.config.taps)) {
+    that.log.warn("No 'taps' array found in config - check your LinkTap configuration");
+    callback(that.accessories);
+    return;
+  }
+
   //tap is a config for each of the linktaps.
   that.config.taps.forEach(function(tap) {
     that.accessories.push(new LinkTapAccessory(that.log, tap));
@@ -51,7 +58,10 @@ function LinkTapAccessory(log, tap) {
   this.taplinkerId = tap.taplinkerId; //required xxxx-xxxx-xxxx-xxxx (no hyphens)
   this.duration = tap.duration; //required timer value in minutes 1..1439 minutes
   this._durationInSeconds = this.duration * 60;
-  this.autoBack = tap.autoBack || true; //required
+  this.autoBack = tap.autoBack !== undefined ? tap.autoBack : true; //required, defaults to true
+
+  this._lastApiCall = 0;        // timestamp (ms) of the last API call, for rate limiting
+  this._pendingOffTimer = null; // holds a deferred off command when rate-limited
 
   this.log("Found LinkTap: %s [%s]", this.name, this.taplinkerId);
 
@@ -63,7 +73,7 @@ LinkTapAccessory.prototype.getServices = function() {
   informationService
     .setCharacteristic(Characteristic.Manufacturer, "LinkTap")
     .setCharacteristic(Characteristic.Model, "LinkTap Wireless Water Timer")
-    .setCharacteristic(Characteristic.SerialNumber, "12345");
+    .setCharacteristic(Characteristic.SerialNumber, this.taplinkerId);
   this.informationService = informationService;
 
   return [informationService, this._service];
@@ -76,21 +86,21 @@ LinkTapAccessory.prototype.getTapService = function() {
   /**
    * DurationTimer Characteristic
    **/
-  Characteristic.DurationTimer = function() {
-    Characteristic.call(this, 'Duration Timer', 'CDC6551D-2D1B-4CC1-A5AE-0200844A7BC3');
-
-    this.setProps({
-      format: Characteristic.Formats.INT,
-      unit: Characteristic.Units.SECONDS,
-      perms: [Characteristic.Perms.READ, Characteristic.Perms.WRITE],
-      minValue: 60,
-      maxValue: 86340,
-    });
-
-    this.value = this.getDefaultValue();
-  };
-  inherits(Characteristic.DurationTimer, Characteristic);
-  Characteristic.DurationTimer.UUID = 'CDC6551D-2D1B-4CC1-A5AE-0200844A7BC3';
+  class DurationTimer extends Characteristic {
+    constructor() {
+      super('Duration Timer', 'CDC6551D-2D1B-4CC1-A5AE-0200844A7BC3');
+      this.setProps({
+        format: 'int',
+        unit: 's',
+        perms: ['pr', 'pw'],
+        minValue: 60,
+        maxValue: 86340,
+      });
+      this.value = this.getDefaultValue();
+    }
+  }
+  DurationTimer.UUID = 'CDC6551D-2D1B-4CC1-A5AE-0200844A7BC3';
+  Characteristic.DurationTimer = DurationTimer;
 
   tapService.addCharacteristic(Characteristic.DurationTimer);
   tapService.updateCharacteristic(Characteristic.DurationTimer, this._durationInSeconds);
@@ -108,44 +118,82 @@ LinkTapAccessory.prototype.identify = function(callback) {
 
 LinkTapAccessory.prototype.turnOnTheTap = function(on, callback) {
   this.log("Setting tap state to " + on);
-  this.log("Data: %s, %s, %s", username, apiKey, gatewayId, this.taplinkerId, this.duration);
+  debug("Request for taplinker %s (gateway %s)", this.taplinkerId, gatewayId);
 
+  // Any new command supersedes a deferred off that may be queued
+  if (this._pendingOffTimer) {
+    clearTimeout(this._pendingOffTimer);
+    this._pendingOffTimer = null;
+  }
+
+  this._resetTimer();
+
+  if (on) {
+    this._sendInstantMode(true, callback);
+    this._startTimer();
+  } else {
+    // Turning off: send a real stop command, respecting the 15s API rate limit
+    var elapsed = Date.now() - this._lastApiCall;
+    if (elapsed >= RATE_LIMIT_MS) {
+      this._sendInstantMode(false, callback);
+    } else {
+      // Too soon since the last call - acknowledge HomeKit now and defer the API call
+      var wait = RATE_LIMIT_MS - elapsed;
+      this.log("Off command deferred %dms to respect LinkTap's 15s rate limit", wait);
+      this._pendingOffTimer = setTimeout(function() {
+        this._pendingOffTimer = null;
+        this._sendInstantMode(false, null);
+      }.bind(this), wait);
+      callback();
+    }
+  }
+};
+
+// Shared helper that sends an activateInstantMode request (on or off)
+LinkTapAccessory.prototype._sendInstantMode = function(on, callback) {
+  var self = this;
   var data = {
     username: username,
     apiKey: apiKey,
     gatewayId: gatewayId,
     taplinkerId: this.taplinkerId,
     action: on,
-    duration: this.duration,
+    duration: on ? this.duration : 0,
     autoBack: this.autoBack
   };
 
-
   var body = JSON.stringify(data);
-  debug("body",body);
-  this._resetTimer();
-  if (on) {
+  debug("body", body);
+  this._lastApiCall = Date.now();
 
-    request({
-        url: _baseURL + "activateInstantMode",
-        body: body,
-        method: 'POST',
-        headers: {
-          'Content-type': 'application/json'
-        }
-      },
-      function(error, response) {
-        if (error) {
-          debug(error);
-          debug('STATUS: ', response.statusCode);
-          callback(error);
-        }  else {
-          debug('STATUS: ', response.statusCode, response.body);
-        }
-      }.bind(this));
-    this._startTimer();
-  }
-  callback();
+  var req = https.request(_baseURL + "activateInstantMode", {
+    method: 'POST',
+    headers: {
+      'Content-type': 'application/json',
+      'Content-Length': Buffer.byteLength(body)
+    }
+  }, function(res) {
+    var responseBody = '';
+    res.on('data', function(chunk) { responseBody += chunk; });
+    res.on('end', function() {
+      debug('STATUS: ', res.statusCode, responseBody);
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        if (callback) callback();
+      } else {
+        var err = new Error("LinkTap API returned HTTP " + res.statusCode);
+        self.log.error(err.message);
+        if (callback) callback(err);
+      }
+    });
+  });
+
+  req.on('error', function(error) {
+    self.log.error("LinkTap API request failed: %s", error.message);
+    if (callback) callback(error);
+  });
+
+  req.write(body);
+  req.end();
 };
 
 LinkTapAccessory.prototype._startTimer = function() {
@@ -161,39 +209,20 @@ LinkTapAccessory.prototype._resetTimer = function() {
 };
 
 LinkTapAccessory.prototype._onTimeout = function() {
-  var that = this;
-  that.log("Switching off the tap %s", this.name);
-  /*request({
-    	url: _baseURL + "activateInstantMode",
-    	body: {
-    		username: this.username,
-			apiKey: this.apiKey,
-			gatewayId: this.gatewayId,
-			taplinkerId: this.taplinkerId,
-			action: 'false',
-			duration: 0
- 		},
- 		method: 'POST',
- 		headers: {'Content-type': 'application/json'}
- 	},
- 	function (error, response) {
- 		if (error) {
-     		that.log('STATUS: ' + response.statusCode);
-     		that.log(error.message);
-     		callback(error);
-   		}
-    });*/
-  this._service.getCharacteristic(Characteristic.On).updateValue(false, undefined, undefined);
+  this.log("Switching off the tap %s", this.name);
+  // With autoBack enabled the LinkTap device stops watering on its own when the
+  // duration elapses, so we only need to reflect that state back in HomeKit here.
+  this._service.getCharacteristic(Characteristic.On).updateValue(false);
   this._timer = 0;
 };
 
 LinkTapAccessory.prototype._getDurationTimerValue = function(callback) {
-  this.log("Returning current tap duration value: " + this._durationInSeconds / 60 + "minutes");
+  this.log("Returning current tap duration value: " + this._durationInSeconds / 60 + " minutes");
   callback(this._durationInSeconds);
 };
 
 LinkTapAccessory.prototype._setDurationTimerValue = function(value, callback) {
-  this.log("Setting the Tap duration to: " + value / 60 + "minutes");
+  this.log("Setting the Tap duration to: " + value / 60 + " minutes");
   this._durationInSeconds = value;
   callback();
 };
