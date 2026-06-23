@@ -1,82 +1,105 @@
-# homebridge-platform-linktap 
+# homebridge-platform-linktap-v2
 
-[![npm package](https://nodei.co/npm/homebridge-platform-linktap.png?downloads=true&downloadRank=true&stars=true)](https://nodei.co/npm/homebridge-platform-linktap/)
+A maintained fork of the LinkTap Homebridge plugin, updated for **Homebridge v2** and modern HAP-nodejs, with security and reliability fixes.
 
-[![NPM Version](https://img.shields.io/npm/v/homebridge-platform-linktap.svg)](https://www.npmjs.com/package/homebridge-platform-linktap)
-[![Dependency Status](https://www.versioneye.com/user/projects/5a786fed0fb24f1f133fae07/badge.svg?style=flat-square)](https://www.versioneye.com/user/projects/5a786fed0fb24f1f133fae07)
-[![Slack Channel](https://img.shields.io/badge/slack-platform--linktap-brightgreen.svg)](https://homebridgeteam.slack.com/messages/C93QDKXSP/)
+> **Note:** This work is based on / forked from [hakt0-r/homebridge-platform-linktap](https://github.com/hakt0-r/homebridge-platform-linktap). All original functionality and credit belong to the original author; this fork builds on that codebase to add Homebridge v2 compatibility and related fixes.
 
+## Why this fork exists
 
-LinkTap Platform Plugin for the [Homebridge](https://github.com/nfarina/homebridge) project.
+The original plugin fails to start on Homebridge v2 with errors like:
 
-# Note - seriously WIP
-
-This package is currently being developed and is a WORK IN PROGRESS. Its currently in the ALPHA stage. 
-
-## LinkTap
-
-[LinkTap] (https://www.link-tap.com) is a wireless tap that is controlled by the LinkTap's wireless bridge.
-There is a published LinkTap [API](https://www.link-tap.com/#!/api-for-developers). 
-
-# Installation
-
-1. Install homebridge using: `npm install -g homebridge`
-2. Install this plugin using: `npm install -g homebridge-platform-linktap`
-3. Update your configuration file. See the sample below.
-
-# Updating
-
-npm update -g homebridge-platform-linktap
-
-# Configuration
-
-Configuration sample:
-
- ```javascript
-// this is an example please do not copy/paste.
-
-"platforms":[
-    {
-        "platform": "LinkTapPlatform",
-        "username": "test",				//Required. String type. Your LinkTap account's username
-        "apiKey": "a6f1223d1fe191f8ec55662d1eb45720'",	//Required. String type. Your API key
-        "gatewayId": "3F7A23FE004B1200",		//Required. String type. Your LinkTap Gateway's first 16-digits/letters ID, case insensitive, no dash symbol
-        "taps": [
-            {
-                "name": "lawn",				//Required. LinkTap name friendly name.
-                "location": "Front yard",		//Optional. friendly location name.
-                "taplinkerId": "67ABCDEF004B1200",	//Required. String type. Your LinkTap Taplinker's first 16-digits/letters ID, case insensitive, no dash symbol
-                "duration": 1				//Required. The watering duration (unit is minutes) 1..1439 minutes. Default 1 minute.
-           }
-	]
-    }
-]
+```
+TypeError: Class constructor Characteristic cannot be invoked without 'new'
+TypeError: Cannot read properties of undefined (reading 'INT')
 ```
 
-# Known Issues
+This fork resolves those, removes a deprecated dependency, and fixes several bugs. The same changes have been submitted upstream as a pull request; this fork exists so the fix can be installed without waiting on the original repo.
 
-These are currently no known issues.
+## Installation
 
-# Future updates
+### 1. Uninstall the old plugin (if installed)
 
-These are some of the planned future updates to this project
-- Async Timer - Cause when the API call fails, we can cancel the timer and triger the switch-off process.
-~~- Implicit OFF - currently the switch-OFF is a timer based switch-off without the actual API call to implicitly switch off the tap. I'd like when the user switches off via the HomeKit the system determines if there is time left on the watering duration and if so issue the API call to switch off the LinkTap.~~
+```bash
+npm uninstall -g homebridge-platform-linktap
+```
 
-## Down the road...
+### 2. Install this version from GitHub
 
-These can be implemented as and when the LinkTap APIs are implemented. Some (if not all) are event driven.
-- Characteristic.Active 
-- Characteristic.BatteryLevel
-- Characteristic.InUse
-- Characteristic.StatusLowBattery
+```bash
+npm install -g https://github.com/phbuilds/homebridge-platform-linktap-v2
+```
 
-# Credits
+Or, if installing into a standard Homebridge instance:
 
-Credit goes to
-- michaelfro for his work on [homebridge-delayed-switches](https://github.com/grover/homebridge-delayed-switches) that this is work is based on.
-- [NorthernMan54](https://github.com/NorthernMan54) for helping me out and getting me across the line. Cheers mate! 
+```bash
+npm install --prefix /var/lib/homebridge https://github.com/phbuilds/homebridge-platform-linktap-v2
+```
 
-# License
+## Configuration
 
-Published under the MIT License.
+Add the following to the `platforms` section of your Homebridge `config.json`:
+
+```json
+{
+  "platform": "LinkTapPlatform",
+  "username": "your_linktap_username",
+  "apiKey": "your_api_key",
+  "gatewayId": "your_gateway_id",
+  "taps": [
+    {
+      "name": "Garden Tap",
+      "location": "Back garden",
+      "taplinkerId": "your_taplinker_id",
+      "duration": 10,
+      "autoBack": true
+    }
+  ]
+}
+```
+
+### Config fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `username` | Yes | Your LinkTap account username |
+| `apiKey` | Yes | Your API key from https://www.link-tap.com/#!/api-for-developers |
+| `gatewayId` | Yes | Your gateway's first 16-digit ID (no dashes) |
+| `name` | Yes | Friendly name for the tap |
+| `location` | No | Friendly location label |
+| `taplinkerId` | Yes | Your taplinker's first 16-digit ID (no dashes) |
+| `duration` | Yes | Watering duration in minutes (1 to 1439) |
+| `autoBack` | No | Auto-revert to the previous mode after watering. Defaults to `true` |
+
+## Behaviour notes
+
+- **Turning off:** switching a tap off in HomeKit sends a real stop command to LinkTap (it no longer just clears a local timer).
+- **Rate limiting:** the LinkTap API enforces a minimum 15-second interval between calls. If you turn a tap off shortly after turning it on, the off command is automatically deferred until that window clears, and is cancelled if you turn the tap back on in the meantime.
+- **Auto-off:** with `autoBack` enabled, the LinkTap device stops watering on its own when the duration elapses; HomeKit state is updated to match.
+
+## Changelog
+
+### 1.3.0
+- Removed the deprecated `request` dependency in favour of Node's built-in `https` module
+- Pinned `debug` to `^4.3.4`; corrected `engines` to realistic minimums (Node 18+, Homebridge 1.6+)
+
+### 1.2.0
+- Added a real turn-off command with a 15-second API rate-limit guard
+
+### 1.1.0
+- Stopped logging the API key
+- Fixed `autoBack` so `false` is respected
+- Fixed a double-callback crash on network errors
+- Use the real `taplinkerId` as the device serial number
+- Added config validation for a missing `taps` array
+
+### 1.0.0
+- Homebridge v2 compatibility: ES6 `Characteristic` class and string-based characteristic props
+
+## Credits
+
+- Original plugin by [hakt0-r](https://github.com/hakt0-r/homebridge-platform-linktap)
+- Based on [homebridge-delayed-switches](https://github.com/grover/homebridge-delayed-switches) by grover
+
+## License
+
+MIT

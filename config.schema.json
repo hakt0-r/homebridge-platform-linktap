@@ -1,0 +1,103 @@
+{
+  "pluginAlias": "LinkTapPlatform",
+  "pluginType": "platform",
+  "singular": true,
+  "headerDisplay": "LinkTap wireless water timer plugin. Create an API key at https://www.link-tap.com/#!/api-for-developers.",
+  "footerDisplay": "For help, see the [project README](https://github.com/phbuilds/homebridge-platform-linktap-v2).",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "username": {
+        "title": "Username",
+        "type": "string",
+        "required": true,
+        "description": "Your LinkTap account username."
+      },
+      "apiKey": {
+        "title": "API Key",
+        "type": "string",
+        "required": true,
+        "description": "Your API key from the LinkTap developer portal."
+      },
+      "gatewayId": {
+        "title": "Gateway ID",
+        "type": "string",
+        "required": true,
+        "description": "Your gateway's first 16-digit ID (no dashes), e.g. 3F7A23FE004B1200."
+      },
+      "pollInterval": {
+        "title": "Status Poll Interval (minutes)",
+        "type": "integer",
+        "required": false,
+        "default": 5,
+        "minimum": 0,
+        "description": "How often to refresh battery and signal status. Minimum 5 (LinkTap API limit). Set to 0 to disable status polling."
+      },
+      "taps": {
+        "title": "Taps",
+        "type": "array",
+        "required": true,
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "title": "Name",
+              "type": "string",
+              "required": true,
+              "description": "Friendly name shown in HomeKit."
+            },
+            "location": {
+              "title": "Location",
+              "type": "string",
+              "required": false,
+              "description": "Optional location label."
+            },
+            "taplinkerId": {
+              "title": "TapLinker ID",
+              "type": "string",
+              "required": true,
+              "description": "Your taplinker's first 16-digit ID (no dashes), e.g. 67ABCDEF004B1200."
+            },
+            "duration": {
+              "title": "Watering Duration (minutes)",
+              "type": "integer",
+              "required": true,
+              "default": 5,
+              "minimum": 1,
+              "maximum": 1439,
+              "description": "How long watering runs, 1 to 1439 minutes."
+            },
+            "autoBack": {
+              "title": "Auto-revert after watering",
+              "type": "boolean",
+              "required": false,
+              "default": true,
+              "description": "Return to the previous watering mode after the duration ends."
+            },
+            "pauseHours": {
+              "title": "Schedule Pause Duration (hours)",
+              "type": "integer",
+              "required": false,
+              "default": 24,
+              "description": "How long the 'Pause Schedule' switch pauses scheduled watering. Range 1 to 240. Use -1 to pause indefinitely (relies on the resume action to restore it)."
+            },
+            "scheduleMode": {
+              "title": "Schedule Mode",
+              "type": "string",
+              "required": false,
+              "default": "sevenDay",
+              "oneOf": [
+                { "title": "Seven Day", "enum": ["sevenDay"] },
+                { "title": "Interval", "enum": ["interval"] },
+                { "title": "Odd-Even", "enum": ["oddEven"] },
+                { "title": "Month", "enum": ["month"] },
+                { "title": "Calendar", "enum": ["calendar"] }
+              ],
+              "description": "The watering plan mode set up in the LinkTap app. Used to re-activate (resume) the schedule when the Pause switch is turned off."
+            }
+          }
+        }
+      }
+    }
+  }
+}
