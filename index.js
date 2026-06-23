@@ -38,6 +38,25 @@ module.exports = function(homebridge) {
   DurationTimer.UUID = 'CDC6551D-2D1B-4CC1-A5AE-0200844A7BC3';
   Characteristic.DurationTimer = DurationTimer;
 
+  // Custom WaterVolume characteristic (litres). Visible in Eve / Controller for
+  // HomeKit; the stock Home app ignores unrecognised characteristics harmlessly.
+  class WaterVolume extends Characteristic {
+    constructor() {
+      super('Water Volume', 'E863F10C-079E-48FF-8F27-9C2605A29F52');
+      this.setProps({
+        format: 'float',
+        unit: 'litre',
+        minValue: 0,
+        maxValue: 1000000,
+        minStep: 0.1,
+        perms: ['pr', 'ev']
+      });
+      this.value = this.getDefaultValue();
+    }
+  }
+  WaterVolume.UUID = 'E863F10C-079E-48FF-8F27-9C2605A29F52';
+  Characteristic.WaterVolume = WaterVolume;
+
   homebridge.registerPlatform("homebridge-platform-linktap", "LinkTapPlatform", LinkTapPlatform);
 };
 
@@ -208,23 +227,37 @@ LinkTapPlatform.prototype._applyStatus = function(parsed) {
       watering = (d.watering !== null && d.watering !== false);
     }
 
-    // Combined fault detection using the device's actual alert fields
-    // (confirmed from a live getAllDevices response). A couple of legacy
-    // fallbacks are kept harmlessly in case firmware naming differs.
+    // Combined fault detection using the device's actual alert fields. The status
+    // response uses fall/leakFlag/clogFlag; the alarm API uses fallFlag/pcFlag/
+    // pbFlag. Freeze fields are checked defensively (name unconfirmed in the poll
+    // response; freeze may only arrive via webhook). Both sets are covered.
     var fault;
     var faultFlags = [
       d.noWater,      // water supply cut off
-      d.fall,         // device has fallen
-      d.valveBroken,  // valve failure
-      d.leakFlag,     // leak detected
-      d.clogFlag,     // clog / abnormal flow
-      d.waterCut, d.fallStatus, d.shutdownFailure // legacy fallbacks
+      d.valveBroken,  // valve shut-off failure
+      d.fall,         // device fallen (status field)
+      d.fallFlag,     // device fallen (alarm-API name)
+      d.leakFlag,     // leak / abnormal flow
+      d.clogFlag,     // clog / blockage
+      d.pcFlag,       // unusually low flow
+      d.pbFlag,       // unusually high flow
+      d.freeze, d.freezeFlag, d.frzFlag // freeze alert (defensive; name unconfirmed)
     ];
     var anyFaultField = faultFlags.some(function(v) { return v !== undefined; });
     if (anyFaultField || d.alert !== undefined || d.alerts !== undefined) {
       fault = faultFlags.some(function(v) { return v === true || v === 1 || v === 'true'; });
       if (!fault && d.alert) fault = true;
       if (!fault && Array.isArray(d.alerts) && d.alerts.length > 0) fault = true;
+    }
+
+    // Water volume of the current/last cycle (G2/G2S flow-meter models). `vol` is
+    // ml; `vel` is the running-slot accumulated volume. Exposed via a custom
+    // characteristic (visible in Eve / Controller for HomeKit).
+    var volumeMl;
+    if (d.vol !== undefined && typeof d.vol === 'number') {
+      volumeMl = d.vol;
+    } else if (d.vel !== undefined && typeof d.vel === 'number') {
+      volumeMl = d.vel;
     }
 
     // Auto-detect the active watering mode so resume re-activates the right plan.
@@ -247,7 +280,7 @@ LinkTapPlatform.prototype._applyStatus = function(parsed) {
       paused = (d.pause === true || d.pause === 1 || (typeof d.pause === 'object' && d.pause !== null));
     }
 
-    accessory.updateStatus(battery, signal, online, watering, fault, paused);
+    accessory.updateStatus(battery, signal, online, watering, fault, paused, volumeMl);
   });
 };
 
@@ -258,7 +291,7 @@ function LinkTapAccessory(log, tap, platform) {
   this.name = tap.name; //required friendly name
   this.location = tap.location; //optional fyi
   this.taplinkerId = tap.taplinkerId; //required xxxx-xxxx-xxxx-xxxx (no hyphens)
-  this.duration = tap.duration; //required timer value in minutes 1..1439 minutes
+  this.duration = (typeof tap.duration === 'number' && tap.duration >= 1) ? tap.duration : 10; //timer value in minutes 1..1439; defaults to 10 if missing/invalid
   this._durationInSeconds = this.duration * 60;
   this.autoBack = tap.autoBack !== undefined ? tap.autoBack : true; //required, defaults to true
   this.pauseHours = tap.pauseHours !== undefined ? tap.pauseHours : 24; // finite default so the schedule auto-resumes; -1 = indefinite
@@ -270,13 +303,14 @@ function LinkTapAccessory(log, tap, platform) {
 
   this._active = 0;             // Characteristic.Active: 0 = inactive, 1 = active (user intent)
   this._inUse = 0;              // Characteristic.InUse: 0 = not flowing, 1 = water flowing
-  this._paused = 0;             // 0 = schedule running, 1 = watering plan paused
+  this._paused = 0;             // 0 = running (switch OFF), 1 = paused (switch ON)
 
   // Status (updated by the platform's polling loop)
   this._batteryLevel = 100;
   this._statusLowBattery = 0;   // 0 = normal, 1 = low
   this._signal = 100;
   this._online = true;
+  this._volume = 0;             // last reported water volume in litres (G2/G2S)
   this._fault = 0;              // 0 = no fault, 1 = any LinkTap alert active
 
   this.log("Found LinkTap: %s [%s]", this.name, this.taplinkerId);
@@ -284,7 +318,7 @@ function LinkTapAccessory(log, tap, platform) {
   this._service = this.getTapService();
   this._batteryService = this.getBatteryService();
   this._faultService = this.getFaultService();
-  this._pauseService = this.getPauseService();
+  this._scheduleService = this.getScheduleService();
 };
 
 LinkTapAccessory.prototype.getServices = function() {
@@ -295,7 +329,7 @@ LinkTapAccessory.prototype.getServices = function() {
     .setCharacteristic(Characteristic.SerialNumber, this.taplinkerId);
   this.informationService = informationService;
 
-  return [informationService, this._service, this._batteryService, this._faultService, this._pauseService];
+  return [informationService, this._service, this._batteryService, this._faultService, this._scheduleService];
 };
 
 LinkTapAccessory.prototype.getTapService = function() {
@@ -323,17 +357,22 @@ LinkTapAccessory.prototype.getTapService = function() {
   tapService.getCharacteristic(Characteristic.StatusFault)
     .on('get', function(cb) { cb(null, this._online ? 0 : 1); }.bind(this));
 
+  // Water volume of the current/last cycle (G2/G2S). Visible in Eve / Controller
+  // for HomeKit; ignored by the stock Home app.
+  tapService.addCharacteristic(Characteristic.WaterVolume);
+  tapService.getCharacteristic(Characteristic.WaterVolume)
+    .on('get', function(cb) { cb(null, this._volume); }.bind(this));
+
   return tapService;
 };
 
 // Pause switch: pauses/resumes the device's scheduled watering plans.
-// ON  -> pauseWateringPlan with the configured duration (default indefinite, -1)
-// OFF -> resume (best-effort; mirrors the app's "Deactivate" pause action)
-LinkTapAccessory.prototype.getPauseService = function() {
+// ON = paused (pauses the plan for the configured duration), OFF = running (resumes).
+LinkTapAccessory.prototype.getScheduleService = function() {
   var pauseService = new Service.Switch(this.name + " Pause Schedule");
   pauseService.getCharacteristic(Characteristic.On)
     .on('get', function(cb) { cb(null, this._paused === 1); }.bind(this))
-    .on('set', this._setPause.bind(this));
+    .on('set', this._setSchedule.bind(this));
   return pauseService;
 };
 
@@ -368,7 +407,7 @@ LinkTapAccessory.prototype.getBatteryService = function() {
 };
 
 // Called by the platform poll loop with the latest status for this tap
-LinkTapAccessory.prototype.updateStatus = function(batteryPct, signalPct, online, watering, fault, paused) {
+LinkTapAccessory.prototype.updateStatus = function(batteryPct, signalPct, online, watering, fault, paused, volumeMl) {
   if (batteryPct !== null && batteryPct !== undefined) {
     this._batteryLevel = batteryPct;
     this._statusLowBattery = batteryPct <= LOW_BATTERY_THRESHOLD ? 1 : 0;
@@ -414,13 +453,25 @@ LinkTapAccessory.prototype.updateStatus = function(batteryPct, signalPct, online
     if (this._fault) this.log.warn("%s reported an alert/fault condition", this.name);
   }
 
-  // Reflect pause/resume performed outside HomeKit (e.g. in the LinkTap app)
+  // Reflect pause/resume performed outside HomeKit (e.g. in the LinkTap app).
+  // Switch is ON when the schedule is paused.
   if (paused !== null && paused !== undefined) {
     var newPaused = paused ? 1 : 0;
     if (newPaused !== this._paused) {
       this._paused = newPaused;
-      if (this._pauseService) {
-        this._pauseService.updateCharacteristic(Characteristic.On, this._paused === 1);
+      if (this._scheduleService) {
+        this._scheduleService.updateCharacteristic(Characteristic.On, this._paused === 1);
+      }
+    }
+  }
+
+  // Water volume (ml -> litres) for G2/G2S flow-meter models
+  if (volumeMl !== null && volumeMl !== undefined) {
+    var litres = Math.round((volumeMl / 1000) * 10) / 10;
+    if (litres !== this._volume) {
+      this._volume = litres;
+      if (this._service) {
+        this._service.updateCharacteristic(Characteristic.WaterVolume, this._volume);
       }
     }
   }
@@ -487,13 +538,16 @@ LinkTapAccessory.prototype.turnOnTheTap = function(on, callback) {
 // Shared helper that sends an activateInstantMode request (on or off)
 LinkTapAccessory.prototype._sendInstantMode = function(on, callback) {
   var self = this;
+  // Use the live duration set via HomeKit's DurationTimer, not just the static
+  // config value, so changing the duration in HomeKit actually takes effect.
+  var durationMinutes = Math.max(1, Math.round(this._durationInSeconds / 60));
   var data = {
     username: username,
     apiKey: apiKey,
     gatewayId: gatewayId,
     taplinkerId: this.taplinkerId,
     action: on,
-    duration: on ? this.duration : 0,
+    duration: on ? durationMinutes : 0,
     autoBack: this.autoBack
   };
 
@@ -532,7 +586,7 @@ LinkTapAccessory.prototype._sendInstantMode = function(on, callback) {
 };
 
 // Pause switch handler: ON pauses the watering plan, OFF resumes it.
-LinkTapAccessory.prototype._setPause = function(value, callback) {
+LinkTapAccessory.prototype._setSchedule = function(value, callback) {
   var pause = (value === true || value === 1);
   this._paused = pause ? 1 : 0;
   if (pause) {
@@ -551,16 +605,16 @@ var SCHEDULE_MODE_ENDPOINTS = {
   calendar: 'activateCalendarMode'
 };
 
-// Map the device's reported workMode code to a schedule mode. Only "T" (7-Day)
-// is confirmed from live hardware; the rest are best-guess and safely fall back
-// to the user's configured scheduleMode when a code isn't recognised.
+// Map the device's reported workMode code to a schedule mode, per the official
+// LinkTap API: M=Instant, I=Interval, T=7-day, O=Odd-even, D=Calendar, Y=Month,
+// N=No mode. Only the schedule modes are listed here; Instant and No-mode have no
+// schedule to re-activate, so they fall through to the skip-with-warning path.
 var WORKMODE_TO_SCHEDULE = {
-  'T': 'sevenDay',
   'I': 'interval',
+  'T': 'sevenDay',
   'O': 'oddEven',
-  'M': 'month',
-  'Y': 'calendar',
-  'C': 'calendar'
+  'D': 'calendar',
+  'Y': 'month'
 };
 
 // Pause the device's scheduled watering plans for a finite duration so the
@@ -677,8 +731,10 @@ LinkTapAccessory.prototype._onTimeout = function() {
   // duration elapses, so we only need to reflect that state back in HomeKit here.
   this._active = 0;
   this._inUse = 0;
-  this._service.updateCharacteristic(Characteristic.Active, 0);
-  this._service.updateCharacteristic(Characteristic.InUse, 0);
+  if (this._service) {
+    this._service.updateCharacteristic(Characteristic.Active, 0);
+    this._service.updateCharacteristic(Characteristic.InUse, 0);
+  }
   this._timer = 0;
 };
 
@@ -688,14 +744,17 @@ LinkTapAccessory.prototype._getDurationTimerValue = function(callback) {
 };
 
 LinkTapAccessory.prototype._setDurationTimerValue = function(value, callback) {
-  this.log("Setting the Tap duration to: " + value / 60 + " minutes");
-  this._durationInSeconds = value;
+  // Clamp to the characteristic's range so the instant-mode duration stays valid
+  var seconds = Math.max(60, Math.min(86340, value));
+  this._durationInSeconds = seconds;
+  this.log("Setting the Tap duration to: " + seconds / 60 + " minutes");
   callback();
 };
 
 /**
  * Possible future work:
  * - Eco mode (eco / ecoOn / ecoOff) exposed as configurable options
- * - Water volume reporting (vel/vol) for G2/G2S flow-meter devices
- * - Webhook listener for push updates instead of polling (lower latency)
+ * - dismissAlarm endpoint to make the fault sensor actionable (clear alerts)
+ * - Webhook listener (setWebHookUrl) for push updates instead of polling:
+ *   instant watering/battery/alert events and reliable freeze + pause sync
  **/

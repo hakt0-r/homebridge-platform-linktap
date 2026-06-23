@@ -79,7 +79,7 @@
               "type": "integer",
               "required": false,
               "default": 24,
-              "description": "How long the 'Pause Schedule' switch pauses scheduled watering. Range 1 to 240. Use -1 to pause indefinitely (relies on the resume action to restore it)."
+              "description": "How long the 'Pause Schedule' switch pauses scheduled watering when turned on. Range 1 to 240. Use -1 to pause indefinitely until switched off."
             },
             "scheduleMode": {
               "title": "Schedule Mode",
