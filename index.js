@@ -130,14 +130,6 @@ LinkTapPlatform.prototype._pollStatus = function() {
 // slightly by firmware, so matching and parsing here are deliberately defensive.
 LinkTapPlatform.prototype._applyStatus = function(parsed) {
   var that = this;
-
-  // TEMPORARY (v1.9.1): log the raw response at normal level so the device's
-  // field names (workMode, pause state, alerts) can be confirmed without the
-  // debug env var, which child-bridge processes don't always inherit.
-  try {
-    this.log("RAW getAllDevices: %s", JSON.stringify(parsed));
-  } catch (e) {}
-
   var gateways = parsed.devices || parsed.deviceList || [];
   var taplinkers = [];
 
@@ -192,19 +184,7 @@ LinkTapPlatform.prototype._applyStatus = function(parsed) {
       if (!fault && Array.isArray(d.alerts) && d.alerts.length > 0) fault = true;
     }
 
-    // Pause state, so the Home app reflects pause/resume done in the LinkTap app.
-    // Field name is unconfirmed across firmware; check the likely candidates and
-    // leave undefined (no override) when none are present.
-    var paused;
-    if (d.watactivated !== undefined) {        // some firmwares: watactivated=false when paused
-      paused = (d.watactivated === false);
-    } else if (d.paused !== undefined) {
-      paused = (d.paused === true || d.paused === 1);
-    } else if (d.pause !== undefined) {
-      paused = (d.pause === true || d.pause === 1 || (typeof d.pause === 'object' && d.pause !== null));
-    }
-
-    accessory.updateStatus(battery, signal, online, watering, fault, paused);
+    accessory.updateStatus(battery, signal, online, watering, fault);
   });
 };
 
@@ -341,7 +321,7 @@ LinkTapAccessory.prototype.getBatteryService = function() {
 };
 
 // Called by the platform poll loop with the latest status for this tap
-LinkTapAccessory.prototype.updateStatus = function(batteryPct, signalPct, online, watering, fault, paused) {
+LinkTapAccessory.prototype.updateStatus = function(batteryPct, signalPct, online, watering, fault) {
   if (batteryPct !== null && batteryPct !== undefined) {
     this._batteryLevel = batteryPct;
     this._statusLowBattery = batteryPct <= LOW_BATTERY_THRESHOLD ? 1 : 0;
@@ -385,17 +365,6 @@ LinkTapAccessory.prototype.updateStatus = function(batteryPct, signalPct, online
       this._faultService.updateCharacteristic(Characteristic.LeakDetected, this._fault);
     }
     if (this._fault) this.log.warn("%s reported an alert/fault condition", this.name);
-  }
-
-  // Reflect pause/resume performed outside HomeKit (e.g. in the LinkTap app)
-  if (paused !== null && paused !== undefined) {
-    var newPaused = paused ? 1 : 0;
-    if (newPaused !== this._paused) {
-      this._paused = newPaused;
-      if (this._pauseService) {
-        this._pauseService.updateCharacteristic(Characteristic.On, this._paused === 1);
-      }
-    }
   }
 
   this.log("%s status: battery %s%%, signal %s%%, %s%s%s",

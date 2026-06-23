@@ -1,6 +1,6 @@
 {
   "name": "homebridge-platform-linktap-v2",
-  "version": "1.9.1",
+  "version": "1.9.0",
   "description": "Fixed Homebridge plugin for LinkTap (https://www.link-tap.com) - compatible with Homebridge v2",
   "main": "index.js",
   "scripts": {
