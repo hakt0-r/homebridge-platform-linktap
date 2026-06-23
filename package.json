@@ -1,14 +1,14 @@
 {
-  "name": "homebridge-platform-linktap-v2",
-  "version": "1.9.0",
-  "description": "Fixed Homebridge plugin for LinkTap (https://www.link-tap.com) - compatible with Homebridge v2",
+  "name": "homebridge-platform-linktap",
+  "version": "0.2.0",
+  "description": "Homebridge plugin for LinkTap (https://www.link-tap.com) based on https://github.com/grover/homebridge-delayed-switches",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/phbuilds/homebridge-platform-linktap-v2.git"
+    "url": "git+https://github.com/hakt0-r/homebridge-platform-linktap.git"
   },
   "keywords": [
     "homebridge-plugin",
@@ -21,9 +21,9 @@
   "author": "hakt0-r",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/phbuilds/homebridge-platform-linktap-v2/issues"
+    "url": "https://github.com/hakt0-r/homebridge-platform-linktap/issues"
   },
-  "homepage": "https://github.com/phbuilds/homebridge-platform-linktap-v2#readme",
+  "homepage": "https://github.com/hakt0-r/homebridge-platform-linktap#readme",
   "engines": {
     "homebridge": ">=1.6.0",
     "node": ">=18.0.0"

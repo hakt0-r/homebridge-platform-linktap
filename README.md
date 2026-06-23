@@ -1,43 +1,30 @@
-# homebridge-platform-linktap-v2
+# homebridge-platform-linktap
 
-A maintained fork of the LinkTap Homebridge plugin, updated for **Homebridge v2** and modern HAP-nodejs, with security and reliability fixes.
+A [Homebridge](https://homebridge.io) plugin for [LinkTap](https://www.link-tap.com) wireless water timers.
 
-> **Note:** This work is based on / forked from [hakt0-r/homebridge-platform-linktap](https://github.com/hakt0-r/homebridge-platform-linktap). All original functionality and credit belong to the original author; this fork builds on that codebase to add Homebridge v2 compatibility and related fixes.
+> **Note:** This is a fork of [hakt0-r/homebridge-platform-linktap](https://github.com/hakt0-r/homebridge-platform-linktap). All original functionality and credit belong to the original author; this work builds on that codebase to add Homebridge v2 compatibility, device status, alerts, and schedule pause.
 
-## Why this fork exists
+Each tap appears in HomeKit as an irrigation valve, with battery level, connection status, watering state, fault alerts, and schedule pause/resume.
 
-The original plugin fails to start on Homebridge v2 with errors like:
+## Features
 
-```
-TypeError: Class constructor Characteristic cannot be invoked without 'new'
-TypeError: Cannot read properties of undefined (reading 'INT')
-```
-
-This fork resolves those, removes a deprecated dependency, and fixes several bugs. The same changes have been submitted upstream as a pull request; this fork exists so the fix can be installed without waiting on the original repo.
+- Start/stop watering (instant mode) with a configurable duration
+- Real stop command on turn-off, with handling for the API's 15-second rate limit
+- Battery level and low-battery warning
+- Connection status (online/offline)
+- Live watering state (reflects watering started from the app, manual button, or schedules)
+- Combined fault alert (water cut, clog, fallen device, valve failure)
+- Pause and resume scheduled watering plans
 
 ## Installation
 
-### 1. Uninstall the old plugin (if installed)
-
 ```bash
-npm uninstall -g homebridge-platform-linktap
-```
-
-### 2. Install this version from GitHub
-
-```bash
-npm install -g https://github.com/phbuilds/homebridge-platform-linktap-v2
-```
-
-Or, if installing into a standard Homebridge instance:
-
-```bash
-npm install --prefix /var/lib/homebridge https://github.com/phbuilds/homebridge-platform-linktap-v2
+npm install -g homebridge-platform-linktap
 ```
 
 ## Configuration
 
-Add the following to the `platforms` section of your Homebridge `config.json`:
+Add the following to the `platforms` section of your Homebridge `config.json`, or use the Homebridge UI settings form:
 
 ```json
 {
@@ -45,61 +32,54 @@ Add the following to the `platforms` section of your Homebridge `config.json`:
   "username": "your_linktap_username",
   "apiKey": "your_api_key",
   "gatewayId": "your_gateway_id",
+  "pollInterval": 5,
   "taps": [
     {
       "name": "Garden Tap",
       "location": "Back garden",
       "taplinkerId": "your_taplinker_id",
       "duration": 10,
-      "autoBack": true
+      "autoBack": true,
+      "pauseHours": 24,
+      "scheduleMode": "sevenDay"
     }
   ]
 }
 ```
 
-### Config fields
+### Platform fields
 
 | Field | Required | Description |
 |-------|----------|-------------|
 | `username` | Yes | Your LinkTap account username |
 | `apiKey` | Yes | Your API key from https://www.link-tap.com/#!/api-for-developers |
 | `gatewayId` | Yes | Your gateway's first 16-digit ID (no dashes) |
-| `name` | Yes | Friendly name for the tap |
-| `location` | No | Friendly location label |
+| `pollInterval` | No | Status refresh in minutes. Minimum 5 (API limit). 0 disables polling. Default 5 |
+
+### Tap fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Friendly name shown in HomeKit |
+| `location` | No | Optional location label |
 | `taplinkerId` | Yes | Your taplinker's first 16-digit ID (no dashes) |
 | `duration` | Yes | Watering duration in minutes (1 to 1439) |
-| `autoBack` | No | Auto-revert to the previous mode after watering. Defaults to `true` |
+| `autoBack` | No | Auto-revert to the previous mode after watering. Default true |
+| `pauseHours` | No | How long the pause switch pauses scheduled watering (1 to 240, or -1 for indefinite). Default 24 |
+| `scheduleMode` | No | Watering plan type used to resume the schedule: `sevenDay`, `interval`, `oddEven`, `month`, or `calendar`. Default `sevenDay` |
 
-## Behaviour notes
+## Notes
 
-- **Turning off:** switching a tap off in HomeKit sends a real stop command to LinkTap (it no longer just clears a local timer).
-- **Rate limiting:** the LinkTap API enforces a minimum 15-second interval between calls. If you turn a tap off shortly after turning it on, the off command is automatically deferred until that window clears, and is cancelled if you turn the tap back on in the meantime.
-- **Auto-off:** with `autoBack` enabled, the LinkTap device stops watering on its own when the duration elapses; HomeKit state is updated to match.
-
-## Changelog
-
-### 1.3.0
-- Removed the deprecated `request` dependency in favour of Node's built-in `https` module
-- Pinned `debug` to `^4.3.4`; corrected `engines` to realistic minimums (Node 18+, Homebridge 1.6+)
-
-### 1.2.0
-- Added a real turn-off command with a 15-second API rate-limit guard
-
-### 1.1.0
-- Stopped logging the API key
-- Fixed `autoBack` so `false` is respected
-- Fixed a double-callback crash on network errors
-- Use the real `taplinkerId` as the device serial number
-- Added config validation for a missing `taps` array
-
-### 1.0.0
-- Homebridge v2 compatibility: ES6 `Characteristic` class and string-based characteristic props
+- The LinkTap API rate-limits control calls to one per 15 seconds and status polling to once per 5 minutes, so status (battery, signal, watering, alerts) can take a few minutes to update.
+- Resume re-activates the watering plan that is live at the moment of resume, since the API has no standalone "resume" call.
+- Pause state and mode changes made in the LinkTap app are not currently reflected back in HomeKit, as the device status response does not include a pause-state field.
 
 ## Credits
 
-- Original plugin by [hakt0-r](https://github.com/hakt0-r/homebridge-platform-linktap)
-- Based on [homebridge-delayed-switches](https://github.com/grover/homebridge-delayed-switches) by grover
+Credit goes to
+- michaelfro for his work on [homebridge-delayed-switches](https://github.com/grover/homebridge-delayed-switches) that this is work is based on.
+- [NorthernMan54](https://github.com/NorthernMan54) for helping me out and getting me across the line. Cheers mate!
 
 ## License
 
-MIT
+Published under the MIT License.

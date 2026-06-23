@@ -4,7 +4,7 @@ const RATE_LIMIT_MS = 15000;        // activateInstantMode: min 15s between call
 const MIN_POLL_MINUTES = 5;         // getAllDevices: manufacturer limits status polling to every 5 min
 const DEFAULT_POLL_MINUTES = 5;
 const LOW_BATTERY_THRESHOLD = 20;   // percent at or below which HomeKit shows a low-battery warning
-var Service, Characteristic, Accessory, UUIDGen;
+var Service, Characteristic;
 var debug = require('debug')('linktap');
 
 var username, apiKey, gatewayId;
@@ -20,15 +20,29 @@ function parsePercent(val) {
 module.exports = function(homebridge) {
   Service = homebridge.hap.Service;
   Characteristic = homebridge.hap.Characteristic;
-  Accessory = homebridge.hap.Accessory;
-  UUIDGen = homebridge.hap.uuid;
 
-  homebridge.registerPlatform("homebridge-platform-linktap-v2", "LinkTapPlatform", LinkTapPlatform);
+  // Define the custom DurationTimer characteristic once, at registration time
+  class DurationTimer extends Characteristic {
+    constructor() {
+      super('Duration Timer', 'CDC6551D-2D1B-4CC1-A5AE-0200844A7BC3');
+      this.setProps({
+        format: 'int',
+        unit: 's',
+        perms: ['pr', 'pw'],
+        minValue: 60,
+        maxValue: 86340,
+      });
+      this.value = this.getDefaultValue();
+    }
+  }
+  DurationTimer.UUID = 'CDC6551D-2D1B-4CC1-A5AE-0200844A7BC3';
+  Characteristic.DurationTimer = DurationTimer;
+
+  homebridge.registerPlatform("homebridge-platform-linktap", "LinkTapPlatform", LinkTapPlatform);
 };
 
 function LinkTapPlatform(log, config, api) {
   this.log = log;
-  this.debug = log.debug;
 
   if (!config) {
     log.warn("Ignoring LinkTap Platform setup because it is not configured");
@@ -56,7 +70,7 @@ LinkTapPlatform.prototype.accessories = function(callback) {
 
   //tap is a config for each of the linktaps.
   that.config.taps.forEach(function(tap) {
-    that.accessoryList.push(new LinkTapAccessory(that.log, tap));
+    that.accessoryList.push(new LinkTapAccessory(that.log, tap, that));
   });
   callback(that.accessoryList);
 
@@ -91,6 +105,17 @@ LinkTapPlatform.prototype._startPolling = function() {
 // Query getAllDevices and distribute battery/signal/online status to each accessory
 LinkTapPlatform.prototype._pollStatus = function() {
   var that = this;
+  this._fetchDevices(function(err, parsed) {
+    if (err) {
+      that.log.error("getAllDevices request failed: %s", err.message);
+      return;
+    }
+    that._applyStatus(parsed);
+  });
+};
+
+// Low-level getAllDevices fetch. Calls back with (err, parsedResponse).
+LinkTapPlatform.prototype._fetchDevices = function(callback) {
   var body = JSON.stringify({ username: username, apiKey: apiKey });
 
   var req = https.request(_baseURL + "getAllDevices", {
@@ -104,25 +129,39 @@ LinkTapPlatform.prototype._pollStatus = function() {
     res.on('data', function(chunk) { responseBody += chunk; });
     res.on('end', function() {
       if (res.statusCode < 200 || res.statusCode >= 300) {
-        that.log.error("getAllDevices returned HTTP %d", res.statusCode);
-        return;
+        return callback(new Error("getAllDevices returned HTTP " + res.statusCode));
       }
       try {
-        var parsed = JSON.parse(responseBody);
-        debug("getAllDevices response: %s", responseBody);
-        that._applyStatus(parsed);
+        callback(null, JSON.parse(responseBody));
       } catch (e) {
-        that.log.error("Failed to parse getAllDevices response: %s", e.message);
+        callback(new Error("Failed to parse getAllDevices response: " + e.message));
       }
     });
   });
 
-  req.on('error', function(err) {
-    that.log.error("getAllDevices request failed: %s", err.message);
-  });
-
+  req.on('error', function(err) { callback(err); });
   req.write(body);
   req.end();
+};
+
+// Read the live workMode for a specific taplinker from a fresh getAllDevices call.
+// Calls back with (err, scheduleMode) where scheduleMode may be null if unknown.
+LinkTapPlatform.prototype.fetchLiveMode = function(taplinkerId, callback) {
+  this._fetchDevices(function(err, parsed) {
+    if (err) return callback(err);
+    var gateways = parsed.devices || parsed.deviceList || [];
+    var mode = null;
+    gateways.forEach(function(gw) {
+      var list = gw.taplinker || gw.deviceList || gw.devices || [];
+      list.forEach(function(d) {
+        var id = d.taplinkerId || d.deviceId || d.id;
+        if (id && String(id).toUpperCase() === String(taplinkerId).toUpperCase() && d.workMode !== undefined) {
+          mode = WORKMODE_TO_SCHEDULE[d.workMode] || null;
+        }
+      });
+    });
+    callback(null, mode);
+  });
 };
 
 // Walk the getAllDevices response and push status into matching accessories.
@@ -130,11 +169,13 @@ LinkTapPlatform.prototype._pollStatus = function() {
 // slightly by firmware, so matching and parsing here are deliberately defensive.
 LinkTapPlatform.prototype._applyStatus = function(parsed) {
   var that = this;
+
   var gateways = parsed.devices || parsed.deviceList || [];
   var taplinkers = [];
 
   gateways.forEach(function(gw) {
-    var list = gw.deviceList || gw.devices || [];
+    // Real response nests taplinkers under `taplinker`; keep older fallbacks too
+    var list = gw.taplinker || gw.deviceList || gw.devices || [];
     list.forEach(function(d) { taplinkers.push(d); });
   });
 
@@ -167,15 +208,17 @@ LinkTapPlatform.prototype._applyStatus = function(parsed) {
       watering = (d.watering !== null && d.watering !== false);
     }
 
-    // Combined fault detection. LinkTap reports various alerts; exact field names
-    // vary by firmware, so check a defensive set plus a generic alert flag/array.
-    // Leaves fault undefined (no override) when none of these fields are present.
+    // Combined fault detection using the device's actual alert fields
+    // (confirmed from a live getAllDevices response). A couple of legacy
+    // fallbacks are kept harmlessly in case firmware naming differs.
     var fault;
     var faultFlags = [
-      d.noWater, d.waterCut, d.waterCutAlert,
-      d.fall, d.fallStatus, d.fallen,
-      d.valveBroken, d.shutdownFailure, d.broken,
-      d.clog, d.lowFlow, d.leakage, d.abnormalFlow
+      d.noWater,      // water supply cut off
+      d.fall,         // device has fallen
+      d.valveBroken,  // valve failure
+      d.leakFlag,     // leak detected
+      d.clogFlag,     // clog / abnormal flow
+      d.waterCut, d.fallStatus, d.shutdownFailure // legacy fallbacks
     ];
     var anyFaultField = faultFlags.some(function(v) { return v !== undefined; });
     if (anyFaultField || d.alert !== undefined || d.alerts !== undefined) {
@@ -184,12 +227,33 @@ LinkTapPlatform.prototype._applyStatus = function(parsed) {
       if (!fault && Array.isArray(d.alerts) && d.alerts.length > 0) fault = true;
     }
 
-    accessory.updateStatus(battery, signal, online, watering, fault);
+    // Auto-detect the active watering mode so resume re-activates the right plan.
+    // Confirmed: "T" = 7-Day mode. Other codes are best-guess and fall back to
+    // the configured scheduleMode when unknown.
+    if (d.workMode !== undefined) {
+      var mapped = WORKMODE_TO_SCHEDULE[d.workMode];
+      if (mapped) accessory._detectedMode = mapped;
+    }
+
+    // Pause state, so the Home app reflects pause/resume done in the LinkTap app.
+    // Field name is unconfirmed across firmware; check the likely candidates and
+    // leave undefined (no override) when none are present.
+    var paused;
+    if (d.watactivated !== undefined) {        // some firmwares: watactivated=false when paused
+      paused = (d.watactivated === false);
+    } else if (d.paused !== undefined) {
+      paused = (d.paused === true || d.paused === 1);
+    } else if (d.pause !== undefined) {
+      paused = (d.pause === true || d.pause === 1 || (typeof d.pause === 'object' && d.pause !== null));
+    }
+
+    accessory.updateStatus(battery, signal, online, watering, fault, paused);
   });
 };
 
-function LinkTapAccessory(log, tap) {
+function LinkTapAccessory(log, tap, platform) {
   this.log = log;
+  this.platform = platform;
 
   this.name = tap.name; //required friendly name
   this.location = tap.location; //optional fyi
@@ -199,6 +263,7 @@ function LinkTapAccessory(log, tap) {
   this.autoBack = tap.autoBack !== undefined ? tap.autoBack : true; //required, defaults to true
   this.pauseHours = tap.pauseHours !== undefined ? tap.pauseHours : 24; // finite default so the schedule auto-resumes; -1 = indefinite
   this.scheduleMode = tap.scheduleMode || 'sevenDay'; // which plan to re-activate on resume
+  this._detectedMode = null;    // mode auto-detected from polling (workMode), if recognised
 
   this._lastApiCall = 0;        // timestamp (ms) of the last API call, for rate limiting
   this._pendingOffTimer = null; // holds a deferred off command when rate-limited
@@ -246,25 +311,7 @@ LinkTapAccessory.prototype.getTapService = function() {
 
   tapService.setCharacteristic(Characteristic.ValveType, Characteristic.ValveType.IRRIGATION);
 
-  /**
-   * DurationTimer Characteristic
-   **/
-  class DurationTimer extends Characteristic {
-    constructor() {
-      super('Duration Timer', 'CDC6551D-2D1B-4CC1-A5AE-0200844A7BC3');
-      this.setProps({
-        format: 'int',
-        unit: 's',
-        perms: ['pr', 'pw'],
-        minValue: 60,
-        maxValue: 86340,
-      });
-      this.value = this.getDefaultValue();
-    }
-  }
-  DurationTimer.UUID = 'CDC6551D-2D1B-4CC1-A5AE-0200844A7BC3';
-  Characteristic.DurationTimer = DurationTimer;
-
+  // DurationTimer is defined once at registration (see module.exports)
   tapService.addCharacteristic(Characteristic.DurationTimer);
   tapService.updateCharacteristic(Characteristic.DurationTimer, this._durationInSeconds);
   tapService.getCharacteristic(Characteristic.DurationTimer)
@@ -321,7 +368,7 @@ LinkTapAccessory.prototype.getBatteryService = function() {
 };
 
 // Called by the platform poll loop with the latest status for this tap
-LinkTapAccessory.prototype.updateStatus = function(batteryPct, signalPct, online, watering, fault) {
+LinkTapAccessory.prototype.updateStatus = function(batteryPct, signalPct, online, watering, fault, paused) {
   if (batteryPct !== null && batteryPct !== undefined) {
     this._batteryLevel = batteryPct;
     this._statusLowBattery = batteryPct <= LOW_BATTERY_THRESHOLD ? 1 : 0;
@@ -365,6 +412,17 @@ LinkTapAccessory.prototype.updateStatus = function(batteryPct, signalPct, online
       this._faultService.updateCharacteristic(Characteristic.LeakDetected, this._fault);
     }
     if (this._fault) this.log.warn("%s reported an alert/fault condition", this.name);
+  }
+
+  // Reflect pause/resume performed outside HomeKit (e.g. in the LinkTap app)
+  if (paused !== null && paused !== undefined) {
+    var newPaused = paused ? 1 : 0;
+    if (newPaused !== this._paused) {
+      this._paused = newPaused;
+      if (this._pauseService) {
+        this._pauseService.updateCharacteristic(Characteristic.On, this._paused === 1);
+      }
+    }
   }
 
   this.log("%s status: battery %s%%, signal %s%%, %s%s%s",
@@ -440,7 +498,7 @@ LinkTapAccessory.prototype._sendInstantMode = function(on, callback) {
   };
 
   var body = JSON.stringify(data);
-  debug("body", body);
+  debug("activateInstantMode body %s", body);
   this._lastApiCall = Date.now();
 
   var req = https.request(_baseURL + "activateInstantMode", {
@@ -493,6 +551,18 @@ var SCHEDULE_MODE_ENDPOINTS = {
   calendar: 'activateCalendarMode'
 };
 
+// Map the device's reported workMode code to a schedule mode. Only "T" (7-Day)
+// is confirmed from live hardware; the rest are best-guess and safely fall back
+// to the user's configured scheduleMode when a code isn't recognised.
+var WORKMODE_TO_SCHEDULE = {
+  'T': 'sevenDay',
+  'I': 'interval',
+  'O': 'oddEven',
+  'M': 'month',
+  'Y': 'calendar',
+  'C': 'calendar'
+};
+
 // Pause the device's scheduled watering plans for a finite duration so the
 // schedule auto-resumes even if an explicit resume is missed. pauseHours -1
 // pauses indefinitely (relies on the explicit resume below to restore it).
@@ -510,19 +580,47 @@ LinkTapAccessory.prototype._pauseWateringPlan = function(callback) {
   this._postLinkTap("pauseWateringPlan", data, callback);
 };
 
-// Resume by re-activating the configured watering plan mode. The LinkTap API has
-// no standalone "resume" call (pauseDuration 0 is rejected with HTTP 400), so the
-// app's "Deactivate" is implemented as re-activating the existing schedule.
+// Resume by re-activating the watering plan mode that is ACTUALLY active right
+// now. The LinkTap API has no standalone "resume" call (pauseDuration 0 returns
+// HTTP 400), so we re-activate the live schedule. We read the current workMode
+// from a fresh getAllDevices call rather than a cached value, so switching modes
+// in the app can't cause us to re-activate the wrong (stale) plan.
 LinkTapAccessory.prototype._resumeWateringPlan = function(callback) {
-  var endpoint = SCHEDULE_MODE_ENDPOINTS[this.scheduleMode] || SCHEDULE_MODE_ENDPOINTS.sevenDay;
-  var data = {
-    username: username,
-    apiKey: apiKey,
-    gatewayId: gatewayId,
-    taplinkerId: this.taplinkerId
+  var self = this;
+
+  var doResume = function(mode) {
+    var endpoint = SCHEDULE_MODE_ENDPOINTS[mode];
+    if (!endpoint) {
+      self.log.warn("%s: could not determine the active watering mode; skipping " +
+        "re-activation to avoid forcing the wrong schedule. The pause will lapse " +
+        "on its own after %s.", self.name,
+        self.pauseHours === -1 ? "the indefinite pause is cleared" : self.pauseHours + "h");
+      if (callback) callback();
+      return;
+    }
+    var data = {
+      username: username,
+      apiKey: apiKey,
+      gatewayId: gatewayId,
+      taplinkerId: self.taplinkerId
+    };
+    self.log("%s watering plan resumed (re-activating %s)", self.name, endpoint);
+    self._postLinkTap(endpoint, data, callback);
   };
-  this.log("%s watering plan resumed (re-activating %s)", this.name, endpoint);
-  this._postLinkTap(endpoint, data, callback);
+
+  if (this.platform && typeof this.platform.fetchLiveMode === 'function') {
+    this.platform.fetchLiveMode(this.taplinkerId, function(err, liveMode) {
+      if (err) {
+        self.log.warn("%s: couldn't read live mode for resume (%s); using %s",
+          self.name, err.message, self._detectedMode || self.scheduleMode);
+        doResume(self._detectedMode || self.scheduleMode);
+      } else {
+        doResume(liveMode || self._detectedMode || self.scheduleMode);
+      }
+    });
+  } else {
+    doResume(this._detectedMode || this.scheduleMode);
+  }
 };
 
 // Generic POST helper for LinkTap endpoints that just need a success/fail result
@@ -597,7 +695,7 @@ LinkTapAccessory.prototype._setDurationTimerValue = function(value, callback) {
 
 /**
  * Possible future work:
- * - Characteristic.InUse / active watering state reflected live from polling
  * - Eco mode (eco / ecoOn / ecoOff) exposed as configurable options
- * - Water volume reporting for G2/G2S flow-meter devices
+ * - Water volume reporting (vel/vol) for G2/G2S flow-meter devices
+ * - Webhook listener for push updates instead of polling (lower latency)
  **/

@@ -3,7 +3,7 @@
   "pluginType": "platform",
   "singular": true,
   "headerDisplay": "LinkTap wireless water timer plugin. Create an API key at https://www.link-tap.com/#!/api-for-developers.",
-  "footerDisplay": "For help, see the [project README](https://github.com/phbuilds/homebridge-platform-linktap-v2).",
+  "footerDisplay": "For help, see the [project README](https://github.com/hakt0-r/homebridge-platform-linktap).",
   "schema": {
     "type": "object",
     "properties": {
