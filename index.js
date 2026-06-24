@@ -2,7 +2,7 @@ const https = require('https');
 const _baseURL = 'https://www.link-tap.com/api/';
 const RATE_LIMIT_MS = 15000;        // activateInstantMode: min 15s between calls
 const MIN_POLL_MINUTES = 5;         // getAllDevices: manufacturer limits status polling to every 5 min
-const DEFAULT_POLL_MINUTES = 5;
+const DEFAULT_POLL_MINUTES = 15;    // default refresh; raise/lower via pollInterval. 5 = API minimum
 const LOW_BATTERY_THRESHOLD = 20;   // percent at or below which HomeKit shows a low-battery warning
 var Service, Characteristic;
 var debug = require('debug')('linktap');
@@ -69,7 +69,7 @@ function LinkTapPlatform(log, config, api) {
     return;
   }
   this.config = config;
-  this.verboseStatusLog = config.verboseStatusLog !== false; // status in main logs by default; set false for debug-only
+  this.verboseStatusLog = config.verboseStatusLog === true; // debug-only by default; set true to show status in the main log
 
   this.api = api;
 

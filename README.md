@@ -35,8 +35,8 @@ Add the following to the `platforms` section of your Homebridge `config.json`, o
   "username": "your_linktap_username",
   "apiKey": "your_api_key",
   "gatewayId": "your_gateway_id",
-  "pollInterval": 5,
-  "verboseStatusLog": true,
+  "pollInterval": 15,
+  "verboseStatusLog": false,
   "taps": [
     {
       "name": "Garden Tap",
@@ -59,8 +59,8 @@ Add the following to the `platforms` section of your Homebridge `config.json`, o
 | `username` | Yes | Your LinkTap account username |
 | `apiKey` | Yes | Your API key from https://www.link-tap.com/#!/api-for-developers |
 | `gatewayId` | Yes | Your gateway's first 16-digit ID (no dashes) |
-| `pollInterval` | No | Status refresh in minutes. Minimum 5 (API limit). 0 disables polling. Default 5 |
-| `verboseStatusLog` | No | Show the routine per-poll status line in the main log. Set false to send it to the debug log only. Default true |
+| `pollInterval` | No | Status refresh in minutes. Minimum 5 (API limit). 0 disables polling. Default 15 |
+| `verboseStatusLog` | No | Show the routine per-poll status line in the main log. Default false (debug log only); set true to show it in the main log |
 
 ### Tap fields
 
