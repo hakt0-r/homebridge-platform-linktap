@@ -4,7 +4,7 @@ A [Homebridge](https://homebridge.io) plugin for [LinkTap](https://www.link-tap.
 
 > **Note:** This is a fork of [hakt0-r/homebridge-platform-linktap](https://github.com/hakt0-r/homebridge-platform-linktap). All original functionality and credit belong to the original author; this work builds on that codebase to add Homebridge v2 compatibility, live status, alerts, flow metering, and schedule pause.
 
-Each tap appears in HomeKit as an irrigation valve, with battery level, connection status, watering state, fault alerts, water volume (G2/G2S), and schedule pause/resume.
+Each tap appears in HomeKit as an irrigation valve (or a plain switch if preferred), with battery level, connection status, watering state, fault alerts, water volume (G2/G2S), and schedule pause/resume.
 
 ## Features
 
@@ -16,6 +16,7 @@ Each tap appears in HomeKit as an irrigation valve, with battery level, connecti
 - Combined fault alert (water cut, clog, valve failure, fallen device, abnormal flow, freeze)
 - Water volume per cycle for G2/G2S flow-meter models (visible in Eve / Controller for HomeKit)
 - Pause and resume scheduled watering plans, with automatic detection of the active mode
+- Choice of accessory type: irrigation valve (default) or legacy on/off switch
 
 ## Installation
 
@@ -41,6 +42,7 @@ Add the following to the `platforms` section of your Homebridge `config.json`, o
       "taplinkerId": "your_taplinker_id",
       "duration": 10,
       "autoBack": true,
+      "useValve": true,
       "pauseHours": 24,
       "scheduleMode": "sevenDay"
     }
@@ -66,6 +68,7 @@ Add the following to the `platforms` section of your Homebridge `config.json`, o
 | `taplinkerId` | Yes | Your taplinker's first 16-digit ID (no dashes) |
 | `duration` | Yes | Watering duration in minutes (1 to 1439) |
 | `autoBack` | No | Auto-revert to the previous mode after watering. Default true |
+| `useValve` | No | Expose the tap as an irrigation valve (adds Active/InUse and flow sensing). Set false for a legacy on/off switch. Default true |
 | `pauseHours` | No | How long the 'Pause Schedule' switch pauses scheduled watering (1 to 240, or -1 for indefinite). Default 24 |
 | `scheduleMode` | No | Watering plan type used to resume the schedule: `sevenDay`, `interval`, `oddEven`, `month`, or `calendar`. Default `sevenDay` |
 
@@ -74,7 +77,7 @@ Add the following to the `platforms` section of your Homebridge `config.json`, o
 - The LinkTap API rate-limits control calls to one per 15 seconds and status polling to once per 5 minutes, so status (battery, signal, watering, alerts, volume) can take a few minutes to update.
 - Resume re-activates the watering plan that is live at the moment of resume, since the API has no standalone "resume" call.
 - Pause state and mode changes made in the LinkTap app are not currently reflected back in HomeKit, as the device status response does not include a pause-state field.
-- The tap is modelled as a valve service. If upgrading from a switch-based version, remove and re-add the accessory in the Home app once.
+- The default valve model adds live flow sensing. If you switch between valve and switch (the `useValve` option), remove and re-add the accessory in the Home app once.
 
 ## Credits
 

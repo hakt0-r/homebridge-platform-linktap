@@ -74,6 +74,13 @@
               "default": true,
               "description": "Return to the previous watering mode after the duration ends."
             },
+            "useValve": {
+              "title": "Use irrigation valve",
+              "type": "boolean",
+              "required": false,
+              "default": true,
+              "description": "Expose the tap as a HomeKit irrigation valve (recommended; adds Active/InUse and live flow sensing). Set to false to use a plain on/off switch (legacy). Changing this requires re-adding the accessory in the Home app."
+            },
             "pauseHours": {
               "title": "Schedule Pause Duration (hours)",
               "type": "integer",

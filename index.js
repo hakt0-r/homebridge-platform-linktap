@@ -294,6 +294,7 @@ function LinkTapAccessory(log, tap, platform) {
   this.duration = (typeof tap.duration === 'number' && tap.duration >= 1) ? tap.duration : 10; //timer value in minutes 1..1439; defaults to 10 if missing/invalid
   this._durationInSeconds = this.duration * 60;
   this.autoBack = tap.autoBack !== undefined ? tap.autoBack : true; //required, defaults to true
+  this.useValve = tap.useValve !== undefined ? tap.useValve : true; // valve (Active+InUse) vs plain switch; switch is the legacy model
   this.pauseHours = tap.pauseHours !== undefined ? tap.pauseHours : 24; // finite default so the schedule auto-resumes; -1 = indefinite
   this.scheduleMode = tap.scheduleMode || 'sevenDay'; // which plan to re-activate on resume
   this._detectedMode = null;    // mode auto-detected from polling (workMode), if recognised
@@ -333,17 +334,28 @@ LinkTapAccessory.prototype.getServices = function() {
 };
 
 LinkTapAccessory.prototype.getTapService = function() {
-  // Modelled as an irrigation Valve so HomeKit shows Active (on/off) and InUse (watering)
-  var tapService = new Service.Valve(this.name);
+  var tapService;
 
-  tapService.getCharacteristic(Characteristic.Active)
-    .on('set', this._setActive.bind(this))
-    .on('get', function(cb) { cb(null, this._active); }.bind(this));
+  if (this.useValve) {
+    // Irrigation Valve so HomeKit shows Active (on/off) and InUse (watering)
+    tapService = new Service.Valve(this.name);
 
-  tapService.getCharacteristic(Characteristic.InUse)
-    .on('get', function(cb) { cb(null, this._inUse); }.bind(this));
+    tapService.getCharacteristic(Characteristic.Active)
+      .on('set', this._setActive.bind(this))
+      .on('get', function(cb) { cb(null, this._active); }.bind(this));
 
-  tapService.setCharacteristic(Characteristic.ValveType, Characteristic.ValveType.IRRIGATION);
+    tapService.getCharacteristic(Characteristic.InUse)
+      .on('get', function(cb) { cb(null, this._inUse); }.bind(this));
+
+    tapService.setCharacteristic(Characteristic.ValveType, Characteristic.ValveType.IRRIGATION);
+  } else {
+    // Legacy plain Switch (on/off only, no independent flow sensing)
+    tapService = new Service.Switch(this.name);
+
+    tapService.getCharacteristic(Characteristic.On)
+      .on('set', this._setSwitchOn.bind(this))
+      .on('get', function(cb) { cb(null, this._active === 1); }.bind(this));
+  }
 
   // DurationTimer is defined once at registration (see module.exports)
   tapService.addCharacteristic(Characteristic.DurationTimer);
@@ -436,10 +448,7 @@ LinkTapAccessory.prototype.updateStatus = function(batteryPct, signalPct, online
     if (newInUse !== this._inUse) {
       this._inUse = newInUse;
       this._active = newInUse;
-      if (this._service) {
-        this._service.updateCharacteristic(Characteristic.InUse, this._inUse);
-        this._service.updateCharacteristic(Characteristic.Active, this._active);
-      }
+      this._reflectWateringState();
       // If watering stopped externally, clear any local auto-off timer
       if (!watering) this._resetTimer();
     }
@@ -500,6 +509,25 @@ LinkTapAccessory.prototype._setActive = function(value, callback) {
   }
 
   this.turnOnTheTap(on, callback);
+};
+
+// Legacy Switch On set handler (when useValve is false).
+LinkTapAccessory.prototype._setSwitchOn = function(value, callback) {
+  var on = (value === true || value === 1);
+  this._active = on ? 1 : 0;
+  this._inUse = on ? 1 : 0;
+  this.turnOnTheTap(on, callback);
+};
+
+// Reflect the current watering state onto whichever service type is in use.
+LinkTapAccessory.prototype._reflectWateringState = function() {
+  if (!this._service) return;
+  if (this.useValve) {
+    this._service.updateCharacteristic(Characteristic.InUse, this._inUse);
+    this._service.updateCharacteristic(Characteristic.Active, this._active);
+  } else {
+    this._service.updateCharacteristic(Characteristic.On, this._active === 1);
+  }
 };
 
 LinkTapAccessory.prototype.turnOnTheTap = function(on, callback) {
@@ -731,10 +759,7 @@ LinkTapAccessory.prototype._onTimeout = function() {
   // duration elapses, so we only need to reflect that state back in HomeKit here.
   this._active = 0;
   this._inUse = 0;
-  if (this._service) {
-    this._service.updateCharacteristic(Characteristic.Active, 0);
-    this._service.updateCharacteristic(Characteristic.InUse, 0);
-  }
+  this._reflectWateringState();
   this._timer = 0;
 };
 
