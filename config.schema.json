@@ -33,6 +33,13 @@
         "minimum": 0,
         "description": "How often to refresh battery and signal status. Minimum 5 (LinkTap API limit). Set to 0 to disable status polling."
       },
+      "verboseStatusLog": {
+        "title": "Show status updates in the main log",
+        "type": "boolean",
+        "required": false,
+        "default": true,
+        "description": "When on, each status poll prints a battery/signal/state line to the main log. Turn off to send these to the debug log only (keeps the main log quiet). Watering, online/offline, and alert changes are always logged regardless of this setting."
+      },
       "taps": {
         "title": "Taps",
         "type": "array",

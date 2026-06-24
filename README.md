@@ -17,6 +17,7 @@ Each tap appears in HomeKit as an irrigation valve (or a plain switch if preferr
 - Water volume per cycle for G2/G2S flow-meter models (visible in Eve / Controller for HomeKit)
 - Pause and resume scheduled watering plans, with automatic detection of the active mode
 - Choice of accessory type: irrigation valve (default) or legacy on/off switch
+- Configurable poll interval and optional quiet logging
 
 ## Installation
 
@@ -35,6 +36,7 @@ Add the following to the `platforms` section of your Homebridge `config.json`, o
   "apiKey": "your_api_key",
   "gatewayId": "your_gateway_id",
   "pollInterval": 5,
+  "verboseStatusLog": true,
   "taps": [
     {
       "name": "Garden Tap",
@@ -58,6 +60,7 @@ Add the following to the `platforms` section of your Homebridge `config.json`, o
 | `apiKey` | Yes | Your API key from https://www.link-tap.com/#!/api-for-developers |
 | `gatewayId` | Yes | Your gateway's first 16-digit ID (no dashes) |
 | `pollInterval` | No | Status refresh in minutes. Minimum 5 (API limit). 0 disables polling. Default 5 |
+| `verboseStatusLog` | No | Show the routine per-poll status line in the main log. Set false to send it to the debug log only. Default true |
 
 ### Tap fields
 
