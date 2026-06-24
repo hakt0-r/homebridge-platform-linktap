@@ -1,38 +1,20 @@
-Help...
-"platforms":[
-	{
-	    "platform": "LinkTapPlatform",
-	    "username": "",				//Required. String type. Your LinkTap account's username
-	    "apiKey": "",				//Required. String type. Your API key
-	    "gatewayId": "",				//Required. String type. Your LinkTap Gateway's first 16-digits/letters ID, case insensitive, no dash symbol
-	    "taps": [
-	        {
-	            "name": "",				//Required. LinkTap name friendly name.
-	            "location": "",			//Optional. friendly location name.
-	            "taplinkerId": "",			//Required. String type. Your LinkTap Taplinker's first 16-digits/letters ID, case insensitive, no dash symbol
-	            "duration": 1,			//Required. The watering duration (unit is minutes) 1..1439 minutes. Default 1 minute.
-		    "autoBack": true			//Required. Defaults to true
-	    	}
-		]
-	}
-]
-
-
-Use this...
-"platforms":[
-	{
-	    "platform": "LinkTapPlatform",
-	    "username": "",
-	    "apiKey": "",
-	    "gatewayId": "",
-	    "taps": [
-	        {
-	            "name": "",
-	            "location": "",
-	            "taplinkerId": "",
-	            "duration": 1,
-		    "autoBack": true
-	    	}
-		]
-	}
-]
+{
+  "platforms": [
+    {
+      "platform": "LinkTapPlatform",
+      "username": "your_linktap_username",
+      "apiKey": "your_api_key",
+      "gatewayId": "your_gateway_id",
+      "pollInterval": 5,
+      "taps": [
+        {
+          "name": "Garden Tap",
+          "location": "Back garden",
+          "taplinkerId": "your_taplinker_id",
+          "duration": 10,
+          "autoBack": true
+        }
+      ]
+    }
+  ]
+}

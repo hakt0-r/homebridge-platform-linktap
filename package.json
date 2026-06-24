@@ -1,7 +1,7 @@
 {
   "name": "homebridge-platform-linktap",
-  "version": "0.1.0",
-  "description": "Homebridge plugin for LinkTap (https://www.link-tap.com)",
+  "version": "1.1.0",
+  "description": "Homebridge plugin for LinkTap (https://www.link-tap.com) based on https://github.com/grover/homebridge-delayed-switches",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
