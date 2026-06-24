@@ -2,7 +2,7 @@ const https = require('https');
 const _baseURL = 'https://www.link-tap.com/api/';
 const RATE_LIMIT_MS = 15000;        // activateInstantMode: min 15s between calls
 const MIN_POLL_MINUTES = 5;         // getAllDevices: manufacturer limits status polling to every 5 min
-const DEFAULT_POLL_MINUTES = 5;
+const DEFAULT_POLL_MINUTES = 15;    // default refresh; raise/lower via pollInterval. 5 = API minimum
 const LOW_BATTERY_THRESHOLD = 20;   // percent at or below which HomeKit shows a low-battery warning
 var Service, Characteristic;
 var debug = require('debug')('linktap');
@@ -69,6 +69,7 @@ function LinkTapPlatform(log, config, api) {
     return;
   }
   this.config = config;
+  this.verboseStatusLog = config.verboseStatusLog === true; // debug-only by default; set true to show status in the main log
 
   this.api = api;
 
@@ -434,6 +435,9 @@ LinkTapAccessory.prototype.updateStatus = function(batteryPct, signalPct, online
   }
 
   if (online !== null && online !== undefined) {
+    if (online !== this._online) {
+      this.log("%s is now %s", this.name, online ? "online" : "offline");
+    }
     this._online = online;
     if (this._service) {
       this._service.updateCharacteristic(Characteristic.StatusFault, online ? 0 : 1);
@@ -446,6 +450,7 @@ LinkTapAccessory.prototype.updateStatus = function(batteryPct, signalPct, online
   if (watering !== null && watering !== undefined) {
     var newInUse = watering ? 1 : 0;
     if (newInUse !== this._inUse) {
+      this.log("%s %s", this.name, watering ? "started watering" : "stopped watering");
       this._inUse = newInUse;
       this._active = newInUse;
       this._reflectWateringState();
@@ -485,7 +490,12 @@ LinkTapAccessory.prototype.updateStatus = function(batteryPct, signalPct, online
     }
   }
 
-  this.log("%s status: battery %s%%, signal %s%%, %s%s%s",
+  // Routine per-poll status summary. Goes to the main log by default; set
+  // verboseStatusLog: false to send it to debug only and keep the log quiet.
+  // Meaningful changes (online/offline, watering start/stop, faults) always log
+  // at normal level above, regardless of this setting.
+  var statusLog = (this.platform && this.platform.verboseStatusLog) ? this.log.bind(this) : debug;
+  statusLog("%s status: battery %s%%, signal %s%%, %s%s%s",
     this.name, this._batteryLevel, this._signal,
     this._online ? "online" : "offline",
     (watering !== undefined ? (watering ? ", watering" : ", idle") : ""),
